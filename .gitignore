@@ -3,5 +3,8 @@
 .gradle/
 out/
 build/
+/.venv/
+__pycache__
+/data/
 
 gradle.properties
