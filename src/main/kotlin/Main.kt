@@ -1,4 +1,4 @@
-import starter.gameLoop
+import modules.Eco
 
 /**
  * Entry point
@@ -8,5 +8,5 @@ import starter.gameLoop
  */
 @Suppress("unused")
 fun loop() {
-    gameLoop()
+    val eco = Eco()
 }

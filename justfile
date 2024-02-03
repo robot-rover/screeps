@@ -1,3 +1,6 @@
+check:
+    ./gradlew check
+
 deploy:
     ./gradlew deploy
 
