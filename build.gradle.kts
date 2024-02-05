@@ -4,7 +4,7 @@ import java.util.*
 
 plugins {
     kotlin("js") version "1.6.10"
-    kotlin("plugin.serialization") version "1.9.21"
+    kotlin("plugin.serialization") version "1.6.10"
 }
 
 repositories {
@@ -13,7 +13,7 @@ repositories {
 
 dependencies {
     implementation("io.github.exav:screeps-kotlin-types:1.13.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
     testImplementation(kotlin("test-js"))
 }
 

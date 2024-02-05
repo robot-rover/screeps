@@ -8,5 +8,5 @@ import modules.Eco
  */
 @Suppress("unused")
 fun loop() {
-    val eco = Eco()
+    val eco = Eco
 }
