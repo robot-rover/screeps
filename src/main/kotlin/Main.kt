@@ -6,7 +6,18 @@ import modules.Eco
  *
  * must not be removed by DCE
  */
-@Suppress("unused")
+
+val MODULES: Array<Module> = arrayOf(
+    modules.Eco, modules.Birth
+)
+
+//@Suppress("unused")
+@JsExport
 fun loop() {
-    val eco = Eco
+    for (module in MODULES) {
+        module.process()
+    }
+    for (module in MODULES) {
+        module.commitMemory()
+    }
 }
