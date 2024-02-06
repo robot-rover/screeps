@@ -4,6 +4,8 @@ abstract class Module {
     abstract fun process()
 }
 
+typealias ModuleMap<T> = MutableMap<ModuleType, T>
+
 enum class ModuleType {
     Eco, Birth
 }

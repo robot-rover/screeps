@@ -1,14 +1,14 @@
 package modules
 
 import Module
+import ModuleMap
 import ModuleType
-import screeps.api.FIND_SOURCES
+import kotlinx.serialization.Contextual
+import kotlinx.serialization.Serializable
 import screeps.api.Game
-import screeps.api.iterator
 import screeps.api.values
 import util.Cached
 import util.KotlinMemory
-import util.ModuleMap
 
 
 object Eco: Module() {
@@ -24,12 +24,15 @@ object Eco: Module() {
         TODO("Not yet implemented")
     }
 
+    @Serializable
     class EnergyRequest(val structureId: String, val amount: Int)
+
+    @Serializable
     private class EcoMemory {
-        val energyRequests: ModuleMap<ArrayDeque<EnergyRequest>> = ModuleMap { ArrayDeque() }
-        val energyUsed: ModuleMap<Int> = ModuleMap { 0 }
+        val energyRequests: ModuleMap<MutableList<EnergyRequest>> = mutableMapOf()
+        val energyUsed: ModuleMap<Int> = mutableMapOf()
     }
-    private val mod_mem: EcoMemory = KotlinMemory.getModule(type)
+    private val mod_mem: EcoMemory = KotlinMemory.getModule(type) { EcoMemory() }
 
     override fun commitMemory() {
         KotlinMemory.setModule(type, mod_mem)
