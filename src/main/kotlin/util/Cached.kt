@@ -1,20 +1,13 @@
 package util
 
 class Cached<T>(val calcFunc: () -> T) {
-    var value: T? = null
+    private var value: T = calcFunc()
 
     fun get(): T {
-        val valueLocal = value
-        if (valueLocal == null) {
-            val nonNullValue = calcFunc()
-            value = nonNullValue
-            return nonNullValue
-        } else {
-            return valueLocal
-        }
+        return value
     }
 
-    fun invalidate() {
-        value = null
+    fun recalculate() {
+        value = calcFunc()
     }
 }

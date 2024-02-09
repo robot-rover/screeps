@@ -1,1 +1,1 @@
-rootProject.name = "screeps"
+rootProject.name = "screeps-main"

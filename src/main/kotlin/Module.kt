@@ -1,3 +1,5 @@
+@OptIn(ExperimentalJsExport::class)
+@JsExport
 abstract class Module {
     abstract fun commitMemory()
     abstract val type: ModuleType
@@ -6,6 +8,8 @@ abstract class Module {
 
 typealias ModuleMap<T> = MutableMap<ModuleType, T>
 
+@OptIn(ExperimentalJsExport::class)
+@JsExport
 enum class ModuleType {
     Eco, Birth
 }
