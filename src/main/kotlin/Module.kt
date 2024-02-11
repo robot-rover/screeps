@@ -7,6 +7,8 @@ abstract class Module {
     abstract val type: ModuleType
     abstract fun process()
 
+    fun init() {}
+
     fun getCreepQueues(): Sequence<String> = emptySequence()
     fun getCreeps(queueName: String): Birth.BirthQueue = throw IllegalArgumentException("$queueName is not a valid creep queue")
     fun creepSequence(): Sequence<Pair<String, Birth.BirthQueue>> = this.getCreepQueues().map { it to this.getCreeps(it) }

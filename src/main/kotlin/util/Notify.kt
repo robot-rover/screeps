@@ -4,7 +4,15 @@ interface SetDirty {
     fun setDirty()
 }
 
-class Root<out T>(private val calc: () -> T): SetDirty {
+interface SetParent {
+    fun setParent(newParent: SetDirty)
+}
+
+class Root<out T>(children: Array<SetParent>, private val calc: () -> T): SetDirty {
+    init {
+        children.forEach { it.setParent(this) }
+    }
+
     private var value: T = calc()
     private var isDirty: Boolean = true
 
@@ -26,7 +34,12 @@ class Root<out T>(private val calc: () -> T): SetDirty {
 
 }
 
-class Chain<out T>(private val parent: SetDirty? = null, private val calc: () -> T): SetDirty {
+class Chain<out T>(children: Array<SetParent> = arrayOf(), private val calc: () -> T): SetDirty, SetParent {
+    init {
+        children.forEach { it.setParent(this) }
+    }
+    private var parent: SetDirty? = null
+
     private var value: T = calc()
 
     override fun setDirty() {
@@ -41,10 +54,19 @@ class Chain<out T>(private val parent: SetDirty? = null, private val calc: () ->
     fun get(): T {
         return value
     }
+
+    override fun setParent(newParent: SetDirty) {
+        if (parent != null) {
+            logWarn("Overwriting parent on ${this::class}")
+        }
+        parent = newParent
+    }
 }
 
-class Leaf<T>(private val parent: SetDirty?, initValue: T): SetDirty {
+class Leaf<T>(initValue: T): SetDirty, SetParent {
+    private var parent: SetDirty? = null
     private var value: T = initValue
+
 
     fun get(): T {
         return value
@@ -60,5 +82,12 @@ class Leaf<T>(private val parent: SetDirty?, initValue: T): SetDirty {
 
     override fun setDirty() {
         parent?.setDirty()
+    }
+
+    override fun setParent(newParent: SetDirty) {
+        if (parent != null) {
+            logWarn("Overwriting parent on ${this::class}")
+        }
+        parent = newParent
     }
 }

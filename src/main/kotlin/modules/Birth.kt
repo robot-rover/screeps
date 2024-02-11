@@ -3,6 +3,7 @@ package modules
 import MODULES
 import Module
 import ModuleType
+import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import screeps.api.*
@@ -13,32 +14,24 @@ import util.*
 object Birth : Module() {
 
     @Serializable
-    class BirthQueue private constructor(private var _body: Array<BodyPartConstant>, private var _wantQuantity: Int, val creeps: MutableList<String>, var lastSpawn: Int) {
-        constructor(bodyArray: Array<BodyPartConstant>, quantity: Int): this(bodyArray, quantity, mutableListOf(), 0)
-
-        var body: Array<BodyPartConstant>
-            get() = _body
-            set(value) {
-                _body = value
-                spawnCost.setDirty()
-            }
-
-        var wantQuantity: Int
-            get() = _wantQuantity
-            set(value) {
-                _wantQuantity = value
-                energyEstimate.setDirty()
-            }
+    class BirthQueue private constructor(val creeps: MutableList<String>, var lastSpawn: Int) {
+        constructor(): this(mutableListOf(), 0)
 
         @Transient
-        val energyEstimate: Root<Int> = Root {
-            spawnCost.get() * wantQuantity / CREEP_LIFETIME
+        val body: Leaf<Array<BodyPartConstant>> = Leaf(arrayOf())
+
+        @Transient
+        val wantQuantity: Leaf<Int> = Leaf(0)
+
+        @Transient
+        val spawnCost: Chain<Int> = Chain(arrayOf(body)) {
+            body.get().sumOf { bodyPartEnergy(it) }
         }
 
 
         @Transient
-        val spawnCost: Chain<Int> = Chain(energyEstimate) {
-            body.sumOf { bodyPartEnergy(it) }
+        val energyEstimate: Root<Int> = Root(arrayOf(spawnCost, wantQuantity)) {
+            spawnCost.get() * wantQuantity.get() / CREEP_LIFETIME
         }
 
         fun getCreeps(): MutableList<Creep> {
@@ -81,7 +74,7 @@ object Birth : Module() {
     private val mod_mem: BirthMemory = KotlinMemory.getModule(type) { BirthMemory() }
 
     private fun getRequest(module: ModuleType): Pair<String, BirthQueue>? {
-        return MODULES[module.ordinal].creepSequence().filter { (_, queue) -> queue.creeps.size < queue.wantQuantity }.minByOrNull { (_, queue) -> queue.lastSpawn }
+        return MODULES[module.ordinal].creepSequence().filter { (_, queue) -> queue.creeps.size < queue.wantQuantity.get() }.minByOrNull { (_, queue) -> queue.lastSpawn }
     }
 
     override fun process() {
@@ -103,7 +96,7 @@ object Birth : Module() {
 
                 if (spawn.room.energyCapacityAvailable >= creepQueue.spawnCost.get()) {
                     // Enough energy, attempt to spawn
-                    val result = spawn.spawnCreep(creepQueue.body, creepLink.creepName)
+                    val result = spawn.spawnCreep(creepQueue.body.get(), creepLink.creepName)
                     // Remove if there is an error
                     !isCodeSuccess("spawnCreep", result, ModuleType.Birth)
                 } else {

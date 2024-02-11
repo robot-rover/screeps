@@ -6,9 +6,17 @@ import screeps.api.ScreepsReturnCode
 
 var DEBUG_ENABLE: Boolean = false
 
+external object console {
+    fun log(message: String)
+    fun error(message: String)
+}
+inline fun jsprint(message: String) {
+    console.log(message)
+}
+
 fun log(prefix: String, message: String, module: ModuleType?) {
     val postfix = if (module != null) { " in $module" } else { "" }
-    print("$prefix: $message$postfix")
+    jsprint("$prefix: $message$postfix")
 }
 
 fun isCodeSuccess(function: String, code: ScreepsReturnCode, module: ModuleType? = null): Boolean {

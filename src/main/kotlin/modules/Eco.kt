@@ -36,6 +36,10 @@ object Eco: Module() {
     }
 
     override fun process() {
+        // TODO: When to do this
+        mod_mem.haulerQueue.body.set(minerBody)
+        mod_mem.haulerQueue.wantQuantity.set(3)
+
         // TODO: Calc the actual quantity
         // TODO: When to reset sourceInfos
         val sourceMemLive: List<Triple<Source, SourceMemory, SourceData>> = sources.get().entries.mapNotNull { (sourceId, info) ->
@@ -45,7 +49,7 @@ object Eco: Module() {
                 return@mapNotNull null
             }
 
-            val mem = mod_mem.sourceMemory.getOrPut(sourceId) { SourceMemory(Birth.BirthQueue(minerBody, 1), mutableListOf()) }
+            val mem = mod_mem.sourceMemory.getOrPut(sourceId) { SourceMemory(Birth.BirthQueue(), mutableListOf()) }
 
             Triple(source, mem, info)
         }
@@ -85,6 +89,9 @@ object Eco: Module() {
 
         // Don't reassign haulers that are refilling
         for ((source, sourceMem, sourceInfo) in sourceMemLive) {
+            // TODO: When to do this
+            sourceMem.miners.body.set(minerBody)
+            sourceMem.miners.wantQuantity.set(1)
             // TODO: Traffic Jam
             // TODO: Memorize position so we don't shift
             for ((idx, miner) in sourceMem.miners.getCreeps().withIndex()) {
@@ -140,7 +147,7 @@ object Eco: Module() {
     @Serializable
     private class EcoMemory {
         val sourceMemory: MutableMap<String, SourceMemory> = mutableMapOf()
-        val haulerQueue: Birth.BirthQueue = Birth.BirthQueue(haulerBody, 3)
+        val haulerQueue: Birth.BirthQueue = Birth.BirthQueue()
     }
 
     private val mod_mem: EcoMemory = KotlinMemory.getModule(type) { EcoMemory() }
