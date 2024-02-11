@@ -1,7 +1,7 @@
 package modules
 
+import MODULES
 import Module
-import ModuleMap
 import ModuleType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
@@ -13,16 +13,31 @@ import util.*
 object Birth : Module() {
 
     @Serializable
-    class BirthQueue(private var _body: Array<BodyPartConstant>, var wantQuantity: Int, val creeps: MutableList<String>) {
+    class BirthQueue private constructor(private var _body: Array<BodyPartConstant>, private var _wantQuantity: Int, val creeps: MutableList<String>, var lastSpawn: Int) {
+        constructor(bodyArray: Array<BodyPartConstant>, quantity: Int): this(bodyArray, quantity, mutableListOf(), 0)
+
         var body: Array<BodyPartConstant>
             get() = _body
             set(value) {
                 _body = value
-                spawnCost.recalculate()
+                spawnCost.setDirty()
+            }
+
+        var wantQuantity: Int
+            get() = _wantQuantity
+            set(value) {
+                _wantQuantity = value
+                energyEstimate.setDirty()
             }
 
         @Transient
-        val spawnCost: Cached<Int> = Cached {
+        val energyEstimate: Root<Int> = Root {
+            spawnCost.get() * wantQuantity / CREEP_LIFETIME
+        }
+
+
+        @Transient
+        val spawnCost: Chain<Int> = Chain(energyEstimate) {
             body.sumOf { bodyPartEnergy(it) }
         }
 
@@ -40,79 +55,40 @@ object Birth : Module() {
 
             return creepList
         }
-
     }
 
     @Serializable
-    class CreepDefinition(val body: Array<BodyPartConstant>) {
-        @Transient
-        val spawnCost: Int = body.sumOf { bodyPartEnergy(it) }
-        private var currentId: String? = null
-        private var nextId: String? = null
-
-        fun getCreep(): Creep? {
-            val currentLocal = currentId
-            if (currentLocal != null) {
-                val currentCreep = Game.creeps[currentLocal]
-                if (currentCreep != null) {
-                    return currentCreep
-                }
+    private class CreepLink private constructor(val creepName: String, val queueName: String, val requester: ModuleType) {
+        companion object {
+            fun makeCreepLink(queuePair: Pair<String, BirthQueue>, requester: ModuleType): CreepLink {
+                // TODO inefficient
+                val (queueName, queue) = queuePair
+                val name = generateSequence(0) { it + 1 }.map { "${requester}_$queueName$it" }.first { !queue.creeps.contains(it) }
+                return CreepLink(name, queueName, requester)
             }
-
-            if (nextId != null) {
-                currentId = nextId
-                nextId = null
-                return getCreep()
-            } else {
-                return null
-            }
-        }
-
-        fun addId(newId: String) {
-            getCreep()
-            if (nextId != null) {
-                logWarn("Overwriting secondary creep id ($nextId)", ModuleType.Birth)
-            }
-            nextId = newId
         }
     }
-
-    @Serializable
-    private class CreepLink(val gameId: String, val requestName: String, val requester: ModuleType)
 
     @Serializable
     private class BirthMemory {
-        val existScreeps: ModuleMap<MutableMap<String, CreepDefinition>> = mutableMapOf()
         val spawnTasks: MutableMap<String, CreepLink> = mutableMapOf()
     }
 
-    private fun genCreepId(request: CreepDefinition): String {
-        TODO("Write genCreepName Logic")
-    }
-
-    private val energyEstimate: Root<Double> = Root {
-        energyEstimateModule.sumOf { it.get() }
-    }
-
-    private val energyEstimateModule: List<Chain<Double>> = ModuleType.entries.map { modType ->
-        Chain(energyEstimate) {
-            (mod_mem.existScreeps[modType]?.values?.sumOf { it.spawnCost }?.toDouble() ?: 0.0) / CREEP_LIFETIME
-        }
-    }.toList()
+//    private val energyEstimate: Root<Double> = Root {
+//        energyEstimateModule.sumOf { it.get() }
+//    }
 
     private val mod_mem: BirthMemory = KotlinMemory.getModule(type) { BirthMemory() }
 
-    fun getScreeps(type: ModuleType): MutableMap<String, CreepDefinition> {
-        return mod_mem.existScreeps.getOrPut(type) { mutableMapOf() }
-    }
-
-    fun setScreepsDirty(type: ModuleType) {
-        energyEstimateModule[type.ordinal].setDirty()
+    private fun getRequest(module: ModuleType): Pair<String, BirthQueue>? {
+        return MODULES[module.ordinal].creepSequence().filter { (_, queue) -> queue.creeps.size < queue.wantQuantity }.minByOrNull { (_, queue) -> queue.lastSpawn }
     }
 
     override fun process() {
+        // TODO: Support more modules (not just eco)
+
         mod_mem.spawnTasks.entries.removeAll { (spawnId, creepLink) ->
-            val creep = Game.creeps[creepLink.gameId]
+            val creep = Game.creeps[creepLink.creepName]
             if (creep == null) {
                 // Spawn hasn't started spawning yet
                 // TODO("Check on energy requests")
@@ -123,16 +99,11 @@ object Birth : Module() {
                 }
 
                 // TODO: Even out the spawning (round robin)
-                val creepDef = mod_mem.existScreeps.getOrPut(creepLink.requester) { mutableMapOf() }[creepLink.requestName]
-                if (creepDef == null) {
-                    // Request was removed
-                    return@removeAll true
-                }
+                val creepQueue = MODULES[creepLink.requester.ordinal].getCreeps(creepLink.queueName)
 
-                if (spawn.room.energyCapacityAvailable >= creepDef.spawnCost) {
+                if (spawn.room.energyCapacityAvailable >= creepQueue.spawnCost.get()) {
                     // Enough energy, attempt to spawn
-                    val result = spawn.spawnCreep(creepDef.body, creepLink.gameId)
-
+                    val result = spawn.spawnCreep(creepQueue.body, creepLink.creepName)
                     // Remove if there is an error
                     !isCodeSuccess("spawnCreep", result, ModuleType.Birth)
                 } else {
@@ -144,38 +115,26 @@ object Birth : Module() {
                 false
             } else {
                 // Spawn is done!
-                val requestedCreep = mod_mem.existScreeps.getOrPut(creepLink.requester) { mutableMapOf() }[creepLink.requestName]
-                if (requestedCreep == null) {
-                    logWarn("Created a creep with no request", ModuleType.Birth)
-                } else {
-                    requestedCreep.addId(creepLink.gameId)
-                }
+                MODULES[creepLink.requester.ordinal].getCreeps(creepLink.queueName).creeps.add(creep.name)
                 true
             }
         }
 
-        val openSpawns =
-            Game.spawns.entries.filter { (spawnId, spawn) -> spawn.spawning == null && spawnId !in mod_mem.spawnTasks }
-        val creepsToSpawn = mod_mem.existScreeps.entries.asSequence()
-            .flatMap { (modType, creepDefs) -> creepDefs.asIterable().map { (creepName, creepDef) -> Triple(modType, creepName, creepDef) } }
-            .filter { (_, creepName, creepDef) -> creepDef.getCreep() == null }.take(openSpawns.size).toList()
-
-        openSpawns.zip(creepsToSpawn) { (spawnId, _), (modType, creepName, creepDef) ->
-            val gameId = genCreepId(creepDef)
-            mod_mem.spawnTasks.put(spawnId, CreepLink(gameId, creepName, modType))
-        }
-
-        if (energyEstimate.checkDirty()) {
-            TODO("Communicate w/ Energy")
+        Game.spawns.entries
+            .filter { (spawnId, spawn) -> spawn.spawning == null && spawnId !in mod_mem.spawnTasks }
+            .forEach { (spawnId, _) ->
+            val pair = getRequest(ModuleType.Eco) ?: return@forEach
+            val link = CreepLink.makeCreepLink(pair, ModuleType.Eco)
+            mod_mem.spawnTasks[spawnId] = link
         }
 
     }
 
-    val maxBodySize: Cached<Int> = Cached {
-        Game.spawns.values.maxOf {
-            it.room.energyCapacityAvailable
-        }
-    }
+//    val maxBodySize: Cached<Int> = Cached {
+//        Game.spawns.values.maxOf {
+//            it.room.energyCapacityAvailable
+//        }
+//    }
 
     override fun commitMemory() {
         KotlinMemory.setModule(type, mod_mem)

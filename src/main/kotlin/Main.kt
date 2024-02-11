@@ -1,14 +1,5 @@
 @file:OptIn(ExperimentalJsExport::class)
 
-/**
- * Entry point
- * is called by screeps
- */
-
-@JsExport
-val MODULES: Array<Module> = arrayOf(
-    modules.Eco, modules.Birth
-)
 
 @JsExport
 fun loop() {
