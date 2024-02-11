@@ -7,15 +7,13 @@ abstract class Module {
     abstract val type: ModuleType
     abstract fun process()
 
-    fun init() {}
+    open fun init() {}
 
-    fun getCreepQueues(): Sequence<String> = emptySequence()
-    fun getCreeps(queueName: String): Birth.BirthQueue = throw IllegalArgumentException("$queueName is not a valid creep queue")
-    fun creepSequence(): Sequence<Pair<String, Birth.BirthQueue>> = this.getCreepQueues().map { it to this.getCreeps(it) }
+    open fun getCreepQueues(): Sequence<String> = emptySequence()
+    open fun getCreeps(queueName: String): Birth.BirthQueue? = null
+    fun creepSequence(): Sequence<Pair<String, Birth.BirthQueue>> = this.getCreepQueues().mapNotNull { it to (this.getCreeps(it) ?: return@mapNotNull null) }
 
-    fun getEcoReqs(): Sequence<String> = emptySequence()
-    fun getEco(reqName: String): Eco.EcoRequest = throw IllegalArgumentException("$reqName is not a valid eco request")
-    fun ecoSequence(): Sequence<Pair<String, Eco.EcoRequest>> = this.getEcoReqs().map { it to this.getEco(it) }
+    open fun ecoSequence(): Sequence<Eco.EcoRequest> = emptySequence()
 }
 
 typealias ModuleMap<T> = MutableMap<ModuleType, T>

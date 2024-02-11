@@ -2,15 +2,9 @@ package modules
 
 import MODULES
 import Module
-import ModuleMap
 import ModuleType
-import PRIORITY
-import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable
 import screeps.api.*
-import screeps.api.structures.Structure
-import screeps.utils.asSequence
-import starter.gameLoop
 import util.*
 
 
@@ -23,11 +17,10 @@ object Eco: Module() {
             .sumOf { it.energyCapacityAvailable } / 300.0
     }
 
-    fun nextRequest(it: Iterator<Pair<String, EcoRequest>>): EcoRequest? {
+    private fun nextRequest(it: Iterator<EcoRequest>): EcoRequest? {
         while (it.hasNext()) {
-            val (storeId, ecoRequest) = it.next()
-            val store = Game.getObjectById<StoreOwner>(storeId)
-            if (store != null && ecoRequest.claims.sumOf { it.second } < ecoRequest.amount) {
+            val ecoRequest = it.next()
+            if (ecoRequest.claims.sumOf { it.second } < ecoRequest.amount) {
                 return ecoRequest
             }
         }
@@ -35,11 +28,13 @@ object Eco: Module() {
         return null
     }
 
-    override fun process() {
+    override fun init() {
         // TODO: When to do this
         mod_mem.haulerQueue.body.set(minerBody)
         mod_mem.haulerQueue.wantQuantity.set(3)
+    }
 
+    override fun process() {
         // TODO: Calc the actual quantity
         // TODO: When to reset sourceInfos
         val sourceMemLive: List<Triple<Source, SourceMemory, SourceData>> = sources.get().entries.mapNotNull { (sourceId, info) ->
@@ -57,11 +52,11 @@ object Eco: Module() {
         val haulersWithTasks = mutableSetOf<String>()
 
         for (module in MODULES) {
-            for ((targetId, request) in module.ecoSequence()) {
-                val target = Game.getObjectById<StoreOwner>(targetId)
+            for (request in module.ecoSequence()) {
+                val target = Game.getObjectById<StoreOwner>(request.target)
 
                 if (target == null) {
-                    logWarn("target $targetId of ${module.type} is null")
+                    logWarn("target ${request.target} of ${module.type} is null")
                     continue
                 }
 
@@ -75,7 +70,7 @@ object Eco: Module() {
                     haulersWithTasks.add(creepId)
 
                     if (distance(creep.pos, target.pos) <= 1) {
-                        val moveToCode = creep.moveTo(target)
+                        val moveToCode = creep.moveTo(target, opts = options { visualizePathStyle = options { } } )
                         isCodeSuccess("moveTo", moveToCode, ModuleType.Eco) // TODO Handle fatigue
                         false
                     } else {
@@ -87,7 +82,6 @@ object Eco: Module() {
             }
         }
 
-        // Don't reassign haulers that are refilling
         for ((source, sourceMem, sourceInfo) in sourceMemLive) {
             // TODO: When to do this
             sourceMem.miners.body.set(minerBody)
@@ -98,7 +92,7 @@ object Eco: Module() {
                 if (idx < sourceInfo.harvestPos.size) {
                     val targetPos = sourceInfo.harvestPos[idx]
                     if (miner.pos.toPos() != targetPos || miner.pos.roomName != source.room.name) {
-                        val moveToCode = miner.moveTo(targetPos.toRoomPos(source.room.name))
+                        val moveToCode = miner.moveTo(targetPos.toRoomPos(source.room.name), opts = options { visualizePathStyle = options { } })
                         isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
                     } else {
                         val tickHarvest = WorkPart.HARVEST_ENERGY * miner.body.count { it == WORK }
@@ -137,7 +131,9 @@ object Eco: Module() {
     }
 
     @Serializable
-    class EcoRequest(val amount: Int, val claims: MutableList<Pair<String, Int>>)
+    class EcoRequest private constructor(val target: String, val amount: Int, val claims: MutableList<Pair<String, Int>>) {
+        constructor(target: String, amount: Int): this(target, amount, mutableListOf())
+    }
 
     @Serializable
     class SourceMemory(val miners: Birth.BirthQueue, val claims: MutableList<String>)
@@ -181,5 +177,16 @@ object Eco: Module() {
 
     override fun commitMemory() {
         KotlinMemory.setModule(type, mod_mem)
+    }
+
+    override fun getCreepQueues(): Sequence<String> {
+        return sequenceOf("hauler") + mod_mem.sourceMemory.keys.asSequence()
+    }
+    override fun getCreeps(queueName: String): Birth.BirthQueue? {
+        if (queueName == "hauler") {
+            return mod_mem.haulerQueue
+        } else {
+            return mod_mem.sourceMemory[queueName]?.miners
+        }
     }
 }

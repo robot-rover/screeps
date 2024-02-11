@@ -51,13 +51,13 @@ object Birth : Module() {
     }
 
     @Serializable
-    private class CreepLink private constructor(val creepName: String, val queueName: String, val requester: ModuleType) {
+    private class CreepLink private constructor(val creepName: String, val queueName: String, val requester: ModuleType, val ecoRequest: Eco.EcoRequest) {
         companion object {
-            fun makeCreepLink(queuePair: Pair<String, BirthQueue>, requester: ModuleType): CreepLink {
+            fun makeCreepLink(queuePair: Pair<String, BirthQueue>, requester: ModuleType, spawn: StructureSpawn): CreepLink {
                 // TODO inefficient
                 val (queueName, queue) = queuePair
                 val name = generateSequence(0) { it + 1 }.map { "${requester}_$queueName$it" }.first { !queue.creeps.contains(it) }
-                return CreepLink(name, queueName, requester)
+                return CreepLink(name, queueName, requester, Eco.EcoRequest(spawn.id, queue.spawnCost.get()))
             }
         }
     }
@@ -80,21 +80,26 @@ object Birth : Module() {
     override fun process() {
         // TODO: Support more modules (not just eco)
 
-        mod_mem.spawnTasks.entries.removeAll { (spawnId, creepLink) ->
+        mod_mem.spawnTasks.entries.removeAll { (spawnName, creepLink) ->
             val creep = Game.creeps[creepLink.creepName]
             if (creep == null) {
                 // Spawn hasn't started spawning yet
                 // TODO("Check on energy requests")
-                val spawn = Game.getObjectById<StructureSpawn>(spawnId)
+                val spawn = Game.spawns[spawnName]
                 if (spawn == null) {
-                    logWarn("Spawn no longer exists (id: $spawnId)", ModuleType.Birth)
+                    logWarn("Spawn no longer exists (id: $spawnName)", ModuleType.Birth)
                     return@removeAll true
                 }
 
                 // TODO: Even out the spawning (round robin)
                 val creepQueue = MODULES[creepLink.requester.ordinal].getCreeps(creepLink.queueName)
+                if (creepQueue == null) {
+                    logWarn("Creep Queue no longer exists (id: ${creepLink.requester}/${creepLink.queueName})")
+                    return@removeAll true
+                }
 
-                if (spawn.room.energyCapacityAvailable >= creepQueue.spawnCost.get()) {
+                if (spawn.room.energyAvailable >= creepQueue.spawnCost.get()) {
+                    jsprint("Spawning ${creepLink.creepName}")
                     // Enough energy, attempt to spawn
                     val result = spawn.spawnCreep(creepQueue.body.get(), creepLink.creepName)
                     // Remove if there is an error
@@ -108,17 +113,24 @@ object Birth : Module() {
                 false
             } else {
                 // Spawn is done!
-                MODULES[creepLink.requester.ordinal].getCreeps(creepLink.queueName).creeps.add(creep.name)
+                jsprint("Creep ${creepLink.creepName} finished spawning")
+                val queue = MODULES[creepLink.requester.ordinal].getCreeps(creepLink.queueName)
+                if (queue != null) {
+                    queue.creeps.add(creep.name)
+                } else {
+                    logWarn("Creep Queue no longer exists (id: ${creepLink.requester}/${creepLink.queueName})")
+                }
                 true
             }
         }
 
         Game.spawns.entries
             .filter { (spawnId, spawn) -> spawn.spawning == null && spawnId !in mod_mem.spawnTasks }
-            .forEach { (spawnId, _) ->
-            val pair = getRequest(ModuleType.Eco) ?: return@forEach
-            val link = CreepLink.makeCreepLink(pair, ModuleType.Eco)
-            mod_mem.spawnTasks[spawnId] = link
+            .forEach { (spawnId, spawn) ->
+                val pair = getRequest(ModuleType.Eco) ?: return@forEach
+                val link = CreepLink.makeCreepLink(pair, ModuleType.Eco, spawn)
+                jsprint("Creating new spawn task: $link")
+                mod_mem.spawnTasks[spawnId] = link
         }
 
     }
@@ -128,6 +140,10 @@ object Birth : Module() {
 //            it.room.energyCapacityAvailable
 //        }
 //    }
+
+    override fun ecoSequence(): Sequence<Eco.EcoRequest> {
+        return mod_mem.spawnTasks.values.map { it.ecoRequest }.asSequence()
+    }
 
     override fun commitMemory() {
         KotlinMemory.setModule(type, mod_mem)
