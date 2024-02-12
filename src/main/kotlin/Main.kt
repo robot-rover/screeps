@@ -11,7 +11,6 @@ var doneInit: Boolean = false
 @JsExport
 fun loop() {
     if (!doneInit) {
-        jsprint("Running initializers")
         MODULES.forEach {
             it.init()
         }

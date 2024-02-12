@@ -14,25 +14,37 @@ inline fun jsprint(message: String) {
     console.log(message)
 }
 
-fun log(prefix: String, message: String, module: ModuleType?) {
-    val postfix = if (module != null) { " in $module" } else { "" }
-    jsprint("$prefix: $message$postfix")
+fun log(prefix: String, message: String) {
+    val stackTrace = getStackTrace(1)
+    jsprint("$prefix: $message\n\t$stackTrace")
 }
 
-fun isCodeSuccess(function: String, code: ScreepsReturnCode, module: ModuleType? = null): Boolean {
-    return if (code == OK) {
+fun ScreepsReturnCode.isCodeSuccess(function: String): Boolean {
+    return if (this == OK) {
         true
     } else {
-        log("Code", "Encountered unexpected return code from $function(): $code", module)
+        log("Code", "Encountered unexpected return code from $function(): $this")
         false
     }
 }
 
-fun logError(message: String, module: ModuleType? = null) = log("Error", message, module)
-fun logWarn(message: String, module: ModuleType? = null) = log("Error", message, module)
-fun logInfo(message: String, module: ModuleType? = null) = log("Info", message, module)
-inline fun logDebug(module: ModuleType? = null, messageFn: () -> String) {
+fun logError(message: String) = log("Error", message)
+fun logWarn(message: String) = log("Error", message)
+fun logInfo(message: String) = log("Info", message)
+inline fun logDebug(messageFn: () -> String) {
     if (DEBUG_ENABLE) {
-        log("Debug", messageFn(), module)
+        log("Debug", messageFn())
     }
+}
+
+private val chromeFramePattern = Regex("^\\s*at (\\S+) \\(eval at exports\\.evalCode")
+private val firefoxFramePattern = Regex("^\\s*([^@]+)@blob:")
+fun getStackTrace(extraDrop: Int = 0): List<String> {
+    val trace = Throwable().asDynamic().stack as String? ?: return emptyList()
+    // Drop Throwable() and getStackTrace()
+    return trace.lineSequence().drop(2 + extraDrop).mapNotNull { line ->
+        chromeFramePattern.find(line).let { if (it != null) return@mapNotNull it.groupValues[1] }
+        firefoxFramePattern.find(line).let { if (it != null) return@mapNotNull it.groupValues[1] }
+        null
+    }.toList()
 }

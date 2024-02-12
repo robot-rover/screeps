@@ -87,7 +87,7 @@ object Birth : Module() {
                 // TODO("Check on energy requests")
                 val spawn = Game.spawns[spawnName]
                 if (spawn == null) {
-                    logWarn("Spawn no longer exists (id: $spawnName)", ModuleType.Birth)
+                    logWarn("Spawn no longer exists (id: $spawnName)")
                     return@removeAll true
                 }
 
@@ -101,9 +101,8 @@ object Birth : Module() {
                 if (spawn.room.energyAvailable >= creepQueue.spawnCost.get()) {
                     jsprint("Spawning ${creepLink.creepName}")
                     // Enough energy, attempt to spawn
-                    val result = spawn.spawnCreep(creepQueue.body.get(), creepLink.creepName)
                     // Remove if there is an error
-                    !isCodeSuccess("spawnCreep", result, ModuleType.Birth)
+                    !spawn.spawnCreep(creepQueue.body.get(), creepLink.creepName).isCodeSuccess("spawnCreep")
                 } else {
                     // Still not enough energy
                     false

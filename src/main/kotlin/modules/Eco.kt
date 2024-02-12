@@ -31,7 +31,7 @@ object Eco: Module() {
 
     override fun init() {
         // TODO: When to do this
-        mod_mem.haulerQueue.body.set(minerBody)
+        mod_mem.haulerQueue.body.set(haulerBody)
         mod_mem.haulerQueue.wantQuantity.set(3)
     }
 
@@ -41,7 +41,7 @@ object Eco: Module() {
         val sourceMemLive: List<Triple<Source, SourceMemory, SourceData>> = sources.get().entries.mapNotNull { (sourceId, info) ->
             val source = Game.getObjectById<Source>(sourceId)
             if (source == null) {
-                logWarn("sourceId is null: $sourceId", ModuleType.Eco)
+                logWarn("sourceId is null: $sourceId")
                 return@mapNotNull null
             }
 
@@ -71,13 +71,12 @@ object Eco: Module() {
                     haulersWithTasks.add(creepName)
 
                     if (distance(creep.pos, target.pos) > 1) {
-                        val moveToCode = creep.moveTo(target, opts = options { visualizePathStyle = options { } } )
-                        isCodeSuccess("moveTo", moveToCode, ModuleType.Eco) // TODO Handle fatigue
+                        creep.moveExt(target)
                         false
                     } else {
                         val transferAmount = min(energyAmount, target.store.getFreeCapacity(RESOURCE_ENERGY) ?: 0)
                         val transferCode = creep.transfer(target, RESOURCE_ENERGY, transferAmount)
-                        if(isCodeSuccess("transfer", transferCode, ModuleType.Eco)) {
+                        if(transferCode.isCodeSuccess("transfer")) {
                             request.amount -= energyAmount
                         }
                         true
@@ -97,8 +96,7 @@ object Eco: Module() {
                 if (idx < sourceInfo.harvestPos.size) {
                     val targetPos = sourceInfo.harvestPos[idx]
                     if (miner.pos.toPos() != targetPos || miner.pos.roomName != source.room.name) {
-                        val moveToCode = miner.moveTo(targetPos.toRoomPos(source.room.name), opts = options { visualizePathStyle = options { } })
-                        isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
+                        miner.moveExt(targetPos.toRoomPos(source.room.name))
                     } else {
                         val tickHarvest = WorkPart.HARVEST_ENERGY * miner.body.count { it.type == WORK }
                         if ((miner.store.getFreeCapacity(RESOURCE_ENERGY) ?: 0) >= tickHarvest) {
@@ -106,8 +104,7 @@ object Eco: Module() {
                         }
                     }
                 } else if (distance(miner.pos, source.pos) > 5) {
-                    val moveToCode = miner.moveTo(source.pos, opts = options { visualizePathStyle = options { } })
-                    isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
+                    miner.moveExt(source.pos)
                 }
             }
 
@@ -129,23 +126,21 @@ object Eco: Module() {
                         if (minerEnergy > 0) {
                             // Initiate transfer
                             val transferEnergy = min(minerEnergy, haulerCap)
-                            val transferCode = miner.transfer(hauler, RESOURCE_ENERGY, transferEnergy)
-                            isCodeSuccess("transfer", transferCode, ModuleType.Eco)
+                            miner.transfer(hauler, RESOURCE_ENERGY, transferEnergy)
+                                .isCodeSuccess("transfer")
                             transferEnergy == haulerCap
                         } else {
                             // No energy in the miner
                             false
                         }
                     } else {
-                        val moveToCode = hauler.moveTo(miner.pos, opts = options { visualizePathStyle = options { }})
-                        isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
+                        hauler.moveExt(miner.pos)
                         false
                     }
                 } else {
                     // No miner available for this hauler at the moment
-                    if (distance(hauler.pos, source.pos) < 5) {
-                        val moveToCode = hauler.moveTo(source.pos, opts = options { visualizePathStyle = options { } })
-                        isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
+                    if (distance(hauler.pos, source.pos) > 5) {
+                        hauler.moveExt(source.pos)
                     }
                     false
                 }
