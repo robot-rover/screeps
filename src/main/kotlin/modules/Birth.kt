@@ -128,8 +128,9 @@ object Birth : Module() {
             .filter { (spawnId, spawn) -> spawn.spawning == null && spawnId !in mod_mem.spawnTasks }
             .forEach { (spawnId, spawn) ->
                 val pair = getRequest(ModuleType.Eco) ?: return@forEach
+                pair.second.lastSpawn = Game.time
                 val link = CreepLink.makeCreepLink(pair, ModuleType.Eco, spawn)
-                jsprint("Creating new spawn task: $link")
+                jsprint("Creating new spawn task: ${link.creepName}")
                 mod_mem.spawnTasks[spawnId] = link
         }
 

@@ -6,6 +6,7 @@ import ModuleType
 import kotlinx.serialization.Serializable
 import screeps.api.*
 import util.*
+import kotlin.math.min
 
 
 object Eco: Module() {
@@ -60,21 +61,25 @@ object Eco: Module() {
                     continue
                 }
 
-                request.claims.removeAll { (creepId, energyAmount) ->
-                    val creep = Game.creeps[creepId] ?: return@removeAll true
+                request.claims.removeAll { (creepName, energyAmount) ->
+                    val creep = Game.creeps[creepName] ?: return@removeAll true
 
                     if (creep.store.getUsedCapacity(RESOURCE_ENERGY) < energyAmount) {
                         return@removeAll true
                     }
 
-                    haulersWithTasks.add(creepId)
+                    haulersWithTasks.add(creepName)
 
-                    if (distance(creep.pos, target.pos) <= 1) {
+                    if (distance(creep.pos, target.pos) > 1) {
                         val moveToCode = creep.moveTo(target, opts = options { visualizePathStyle = options { } } )
                         isCodeSuccess("moveTo", moveToCode, ModuleType.Eco) // TODO Handle fatigue
                         false
                     } else {
-                        creep.transfer(target, RESOURCE_ENERGY, energyAmount)
+                        val transferAmount = min(energyAmount, target.store.getFreeCapacity(RESOURCE_ENERGY) ?: 0)
+                        val transferCode = creep.transfer(target, RESOURCE_ENERGY, transferAmount)
+                        if(isCodeSuccess("transfer", transferCode, ModuleType.Eco)) {
+                            request.amount -= energyAmount
+                        }
                         true
                     }
 
@@ -95,15 +100,56 @@ object Eco: Module() {
                         val moveToCode = miner.moveTo(targetPos.toRoomPos(source.room.name), opts = options { visualizePathStyle = options { } })
                         isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
                     } else {
-                        val tickHarvest = WorkPart.HARVEST_ENERGY * miner.body.count { it == WORK }
-                        if (miner.store.getFreeCapacity(RESOURCE_ENERGY) >= tickHarvest) {
+                        val tickHarvest = WorkPart.HARVEST_ENERGY * miner.body.count { it.type == WORK }
+                        if ((miner.store.getFreeCapacity(RESOURCE_ENERGY) ?: 0) >= tickHarvest) {
                             miner.harvest(source)
                         }
                     }
                 } else if (distance(miner.pos, source.pos) > 5) {
-                    val moveToCode = miner.moveTo(source.pos)
+                    val moveToCode = miner.moveTo(source.pos, opts = options { visualizePathStyle = options { } })
                     isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
                 }
+            }
+
+            val minerIter = sourceMem.miners.getCreeps().take(sourceInfo.harvestPos.size).iterator()
+
+            sourceMem.claims.removeAll {
+                val hauler = Game.creeps[it] ?: return@removeAll true
+                val haulerCap: Int = hauler.store.getFreeCapacity(RESOURCE_ENERGY) ?: 0
+                if (haulerCap == 0) return@removeAll true
+
+                // Todo: might not have a task by here
+                haulersWithTasks.add(it)
+
+                if (minerIter.hasNext()) {
+                    val miner = minerIter.next()
+
+                    if (distance(hauler.pos, miner.pos) <= 1) {
+                        val minerEnergy = miner.store.getUsedCapacity(RESOURCE_ENERGY) ?: 0
+                        if (minerEnergy > 0) {
+                            // Initiate transfer
+                            val transferEnergy = min(minerEnergy, haulerCap)
+                            val transferCode = miner.transfer(hauler, RESOURCE_ENERGY, transferEnergy)
+                            isCodeSuccess("transfer", transferCode, ModuleType.Eco)
+                            transferEnergy == haulerCap
+                        } else {
+                            // No energy in the miner
+                            false
+                        }
+                    } else {
+                        val moveToCode = hauler.moveTo(miner.pos, opts = options { visualizePathStyle = options { }})
+                        isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
+                        false
+                    }
+                } else {
+                    // No miner available for this hauler at the moment
+                    if (distance(hauler.pos, source.pos) < 5) {
+                        val moveToCode = hauler.moveTo(source.pos, opts = options { visualizePathStyle = options { } })
+                        isCodeSuccess("moveTo", moveToCode, ModuleType.Eco)
+                    }
+                    false
+                }
+
             }
         }
 
@@ -131,7 +177,7 @@ object Eco: Module() {
     }
 
     @Serializable
-    class EcoRequest private constructor(val target: String, val amount: Int, val claims: MutableList<Pair<String, Int>>) {
+    class EcoRequest private constructor(val target: String, var amount: Int, val claims: MutableList<Pair<String, Int>>) {
         constructor(target: String, amount: Int): this(target, amount, mutableListOf())
     }
 
@@ -183,10 +229,10 @@ object Eco: Module() {
         return sequenceOf("hauler") + mod_mem.sourceMemory.keys.asSequence()
     }
     override fun getCreeps(queueName: String): Birth.BirthQueue? {
-        if (queueName == "hauler") {
-            return mod_mem.haulerQueue
+        return if (queueName == "hauler") {
+            mod_mem.haulerQueue
         } else {
-            return mod_mem.sourceMemory[queueName]?.miners
+            mod_mem.sourceMemory[queueName]?.miners
         }
     }
 }

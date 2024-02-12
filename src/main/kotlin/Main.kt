@@ -1,5 +1,7 @@
 @file:OptIn(ExperimentalJsExport::class)
 
+import screeps.api.Memory
+import screeps.api.get
 import util.jsprint
 import util.logError
 
@@ -10,7 +12,9 @@ var doneInit: Boolean = false
 fun loop() {
     if (!doneInit) {
         jsprint("Running initializers")
-        MODULES.forEach { it.init() }
+        MODULES.forEach {
+            it.init()
+        }
         doneInit = true
     }
 
